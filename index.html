@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>智能体开发指挥台</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <div class="particles" aria-hidden="true"></div>
+
+  <main class="app">
+    <section class="stage">
+      <section class="layer control">
+        <div class="layer-head">
+          <div>
+            <div class="kicker">控制层</div>
+            <h2>总控路由、任务分配与协同调度</h2>
+            
+          </div>
+          <span class="pill">1 个智能体（你）</span>
+        </div>
+
+        <article class="agent-card lead" id="leadCard">
+          <div class="agent-head"><span class="icon role-control" title="总控调度">🧠</span><div><div class="agent-tag">总控</div><h3>你（总控）</h3></div></div>
+          <p class="role">Rapid Prototyper</p>
+          <div class="status running">● 运行中</div>
+          <div class="line">a1（思考中）</div>
+          <div class="line dim">.../bridgemind/bridgemind-api</div>
+          <div class="meta">运行时长 0分12秒</div>
+        </article>
+      </section>
+
+      <div class="handoff-wrap">
+  <div class="handoff-net" aria-hidden="true">
+    <span class="wire w1"></span>
+    <span class="wire w2"></span>
+    <span class="wire w3"></span>
+  </div>
+  <div class="handoff">任务交接</div>
+</div>
+
+      <section class="layer exec">
+        <div class="layer-head">
+          <div>
+            <div class="kicker">执行层</div>
+            <h2>构建、侦察与执行智能体共享交付面板</h2>
+          </div>
+          <span class="pill">3 个智能体（前端/后端/QA）</span>
+        </div>
+
+        <div class="grid" id="execGrid"></div>
+      </section>
+    </section>
+
+    <aside class="sidebar">
+      <section class="side-card">
+        <div class="side-title">操作视图</div>
+        <div class="chips">
+          <span class="chip red">0 个阻塞</span>
+          <span class="chip blue">0 条待分配</span>
+          <span class="chip cyan">0 条待验收</span>
+          <span class="chip gold">0 个空闲</span>
+          <span class="chip dark">0 个异常</span>
+        </div>
+      </section>
+
+      <section class="side-card console">
+        <div class="side-row">
+          <div class="side-title">操作台消息</div>
+          <span class="muted" id="msgCount">0 条消息</span>
+        </div>
+        <div id="consoleLog" class="console-log">暂无消息。你可以在下方发送，或等待智能体主动上报。</div>
+        <div class="console-inputs">
+          <label class="to">发送给
+            <select id="target">
+              <option value="all" selected>全部智能体</option>
+              <option value="rapid">你（总控）</option>
+              <option value="frontend">前端智能体</option>
+              <option value="backend">后端智能体</option>
+              <option value="qa">QA智能体</option>
+            </select>
+          </label>
+          <div class="send-row">
+            <input id="msgInput" placeholder="输入要发送给智能体的消息..." />
+            <button id="sendBtn">发送</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="side-card activity">
+        <div class="side-row">
+          <div class="side-title">实时动态</div>
+          <span class="muted">4 个活跃</span>
+        </div>
+        <ul id="activityList"></ul>
+      </section>
+    </aside>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
