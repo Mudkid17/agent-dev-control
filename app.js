@@ -5,6 +5,38 @@ const state = {
   replyHistory: { all: [], rapid: [], frontend: [], backend: [], qa: [] }
 };
 
+const CACHE_KEY = 'adc_console_cache_v1';
+const LIMIT_STATUS = 120;   // 每个视图最多120条状态
+const LIMIT_REPLY = 80;     // 每个视图最多80条回复
+
+function saveConsoleCache(){
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      statusHistory: state.statusHistory,
+      replyHistory: state.replyHistory,
+      ts: Date.now()
+    }));
+  } catch {}
+}
+
+function loadConsoleCache(){
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data?.statusHistory) state.statusHistory = data.statusHistory;
+    if (data?.replyHistory) state.replyHistory = data.replyHistory;
+
+    // 安全裁剪，防止缓存过大
+    for (const k of Object.keys(state.statusHistory || {})) {
+      state.statusHistory[k] = (state.statusHistory[k] || []).slice(-LIMIT_STATUS);
+    }
+    for (const k of Object.keys(state.replyHistory || {})) {
+      state.replyHistory[k] = (state.replyHistory[k] || []).slice(-LIMIT_REPLY);
+    }
+  } catch {}
+}
+
 const AGENT_KEY_BY_NAME = {
   '你（总控）': 'rapid',
   '前端智能体': 'frontend',
@@ -25,24 +57,26 @@ function pushStatus(agentKey, text){
   // 只在内容变化时记录（不按时间重复刷）
   const existsSame = list.some(x => x.text === norm);
   if (!existsSame) list.push(rec);
-  state.statusHistory[agentKey] = list.slice(-40);
+  state.statusHistory[agentKey] = list.slice(-LIMIT_STATUS);
 
   const all = state.statusHistory.all || [];
   const allText = `[${KEY_LABEL[agentKey] || agentKey}] ${norm}`;
   const allExists = all.some(x => x.text === allText);
   if (!allExists) all.push({ ts: rec.ts, text: allText });
-  state.statusHistory.all = all.slice(-80);
+  state.statusHistory.all = all.slice(-LIMIT_STATUS);
+  saveConsoleCache();
 }
 
 function pushReply(agentKey, who, text){
   const rec = { ts: Date.now(), text: `${who}: ${text}` };
   const arr = state.replyHistory[agentKey] || [];
   arr.push(rec);
-  state.replyHistory[agentKey] = arr.slice(-30);
+  state.replyHistory[agentKey] = arr.slice(-LIMIT_REPLY);
 
   const all = state.replyHistory.all;
   all.push({ ts: rec.ts, text: `[${agentKey}] ${rec.text}` });
-  state.replyHistory.all = all.slice(-60);
+  state.replyHistory.all = all.slice(-LIMIT_REPLY);
+  saveConsoleCache();
 }
 
 function renderControl(c){
@@ -187,6 +221,8 @@ async function refresh(){
   }
 }
 
+loadConsoleCache();
+renderConsole();
 refresh();
 setInterval(refresh, 3000);
 applyLockedLayout();
