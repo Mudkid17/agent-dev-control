@@ -5,38 +5,6 @@ const state = {
   replyHistory: { all: [], rapid: [], frontend: [], backend: [], qa: [] }
 };
 
-const CACHE_KEY = 'adc_console_cache_v1';
-const LIMIT_STATUS = 120;   // 每个视图最多120条状态
-const LIMIT_REPLY = 80;     // 每个视图最多80条回复
-
-function saveConsoleCache(){
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({
-      statusHistory: state.statusHistory,
-      replyHistory: state.replyHistory,
-      ts: Date.now()
-    }));
-  } catch {}
-}
-
-function loadConsoleCache(){
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
-    if (data?.statusHistory) state.statusHistory = data.statusHistory;
-    if (data?.replyHistory) state.replyHistory = data.replyHistory;
-
-    // 安全裁剪，防止缓存过大
-    for (const k of Object.keys(state.statusHistory || {})) {
-      state.statusHistory[k] = (state.statusHistory[k] || []).slice(-LIMIT_STATUS);
-    }
-    for (const k of Object.keys(state.replyHistory || {})) {
-      state.replyHistory[k] = (state.replyHistory[k] || []).slice(-LIMIT_REPLY);
-    }
-  } catch {}
-}
-
 const AGENT_KEY_BY_NAME = {
   '你（总控）': 'rapid',
   '前端智能体': 'frontend',
@@ -57,26 +25,24 @@ function pushStatus(agentKey, text){
   // 只在内容变化时记录（不按时间重复刷）
   const existsSame = list.some(x => x.text === norm);
   if (!existsSame) list.push(rec);
-  state.statusHistory[agentKey] = list.slice(-LIMIT_STATUS);
+  state.statusHistory[agentKey] = list.slice(-40);
 
   const all = state.statusHistory.all || [];
   const allText = `[${KEY_LABEL[agentKey] || agentKey}] ${norm}`;
   const allExists = all.some(x => x.text === allText);
   if (!allExists) all.push({ ts: rec.ts, text: allText });
-  state.statusHistory.all = all.slice(-LIMIT_STATUS);
-  saveConsoleCache();
+  state.statusHistory.all = all.slice(-80);
 }
 
 function pushReply(agentKey, who, text){
   const rec = { ts: Date.now(), text: `${who}: ${text}` };
   const arr = state.replyHistory[agentKey] || [];
   arr.push(rec);
-  state.replyHistory[agentKey] = arr.slice(-LIMIT_REPLY);
+  state.replyHistory[agentKey] = arr.slice(-30);
 
   const all = state.replyHistory.all;
   all.push({ ts: rec.ts, text: `[${agentKey}] ${rec.text}` });
-  state.replyHistory.all = all.slice(-LIMIT_REPLY);
-  saveConsoleCache();
+  state.replyHistory.all = all.slice(-60);
 }
 
 function renderControl(c){
@@ -221,27 +187,20 @@ async function refresh(){
   }
 }
 
-loadConsoleCache();
-renderConsole();
 refresh();
 setInterval(refresh, 3000);
-applyLockedLayout();
+initLayoutEditor();
 
 
-
-
-// ===== 锁定布局（仅应用已保存位置/尺寸，不允许编辑） =====
-function applyLockedLayout(){
-  const targets = [
-    ...document.querySelectorAll('.layer.control'),
-    ...document.querySelectorAll('.layer.exec'),
-    ...document.querySelectorAll('.sidebar .side-card'),
-    ...document.querySelectorAll('.lead')
-  ];
+// ===== 布局编辑模式（可拖动窗口） =====
+function initLayoutEditor(){
+  const selector = '.layer.control, .layer.exec, .sidebar .side-card, .lead';
+  const targets = [...document.querySelectorAll(selector)];
 
   targets.forEach((el, idx) => {
     if (!el.dataset.dragKey) el.dataset.dragKey = `panel_${idx}`;
 
+    // 还原位置
     const savedPos = localStorage.getItem(`adc_pos_${el.dataset.dragKey}`);
     if (savedPos) {
       try {
@@ -250,6 +209,7 @@ function applyLockedLayout(){
       } catch {}
     }
 
+    // 还原尺寸
     const savedSize = localStorage.getItem(`adc_size_${el.dataset.dragKey}`);
     if (savedSize) {
       try {
@@ -257,7 +217,108 @@ function applyLockedLayout(){
         if (Number.isFinite(w)) el.style.setProperty('width', `${w}px`, 'important');
         if (Number.isFinite(h)) el.style.setProperty('height', `${h}px`, 'important');
         el.style.setProperty('max-width', 'none', 'important');
+        el.style.setProperty('min-width', '220px', 'important');
+        el.style.setProperty('min-height', '120px', 'important');
       } catch {}
     }
+
+    // 添加缩放手柄
+    if (!el.querySelector(':scope > .resize-handle')) {
+      const h = document.createElement('span');
+      h.className = 'resize-handle';
+      h.title = '拖拽调整大小';
+      el.appendChild(h);
+    }
+  });
+
+  let editOn = localStorage.getItem('adc_layout_edit') === '1';
+  const btn = document.createElement('button');
+  btn.className = 'layout-edit-btn';
+  const setBtn = () => { btn.textContent = editOn ? '完成布局' : '布局编辑'; };
+  setBtn();
+  btn.onclick = () => {
+    editOn = !editOn;
+    localStorage.setItem('adc_layout_edit', editOn ? '1' : '0');
+    document.body.classList.toggle('drag-edit-on', editOn);
+    setBtn();
+  };
+  document.body.appendChild(btn);
+  if (editOn) document.body.classList.add('drag-edit-on');
+
+  let mode = null; // 'drag' | 'resize'
+  let op = null;
+
+  document.addEventListener('mousedown', (e) => {
+    if (!editOn) return;
+
+    const handle = e.target.closest('.resize-handle');
+    if (handle) {
+      const el = handle.parentElement;
+      op = {
+        el,
+        sx: e.clientX,
+        sy: e.clientY,
+        ow: el.getBoundingClientRect().width,
+        oh: el.getBoundingClientRect().height
+      };
+      el.style.setProperty('max-width', 'none', 'important');
+      el.style.setProperty('min-width', '220px', 'important');
+      el.style.setProperty('min-height', '120px', 'important');
+      mode = 'resize';
+      e.preventDefault();
+      return;
+    }
+
+    const el = e.target.closest(selector);
+    if (!el) return;
+    const m = (el.style.transform || '').match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
+    op = {
+      el,
+      sx: e.clientX,
+      sy: e.clientY,
+      ox: m ? parseFloat(m[1]) : 0,
+      oy: m ? parseFloat(m[2]) : 0
+    };
+    mode = 'drag';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!op || !mode) return;
+
+    if (mode === 'drag') {
+      const x = op.ox + (e.clientX - op.sx);
+      const y = op.oy + (e.clientY - op.sy);
+      op.el.style.transform = `translate(${x}px, ${y}px)`;
+      return;
+    }
+
+    if (mode === 'resize') {
+      const w = Math.max(220, op.ow + (e.clientX - op.sx));
+      const h = Math.max(120, op.oh + (e.clientY - op.sy));
+      op.el.style.setProperty('width', `${w}px`, 'important');
+      op.el.style.setProperty('height', `${h}px`, 'important');
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!op || !mode) return;
+
+    if (mode === 'drag') {
+      const m = (op.el.style.transform || '').match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
+      const x = m ? parseFloat(m[1]) : 0;
+      const y = m ? parseFloat(m[2]) : 0;
+      localStorage.setItem(`adc_pos_${op.el.dataset.dragKey}`, JSON.stringify({x,y}));
+    }
+
+    if (mode === 'resize') {
+      const rect = op.el.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      localStorage.setItem(`adc_size_${op.el.dataset.dragKey}`, JSON.stringify({w,h}));
+    }
+
+    op = null;
+    mode = null;
   });
 }
